@@ -2,6 +2,7 @@ import os
 import cv2
 import json
 import concurrent
+import tempfile
 
 
 from pytube import YouTube
@@ -10,7 +11,7 @@ import speech_recognition as sr
 from concurrent.futures import ThreadPoolExecutor
 
 
-def download_video(url, vid_id, output_path):
+def download_video(url, vid_id):
     """
     Download a video from a given url and save it to the output path.
 
@@ -23,20 +24,26 @@ def download_video(url, vid_id, output_path):
     """
     yt = YouTube(url)
 
+    temp_dir = tempfile.mkdtemp(vid_id)
+
     metadata = {
         "author": yt.author,
         "title": yt.title,
         "view": yt.views,
         "length": yt.length,
+        "output_path": os.path.join(temp_dir, f"{vid_id}.mp4"),
     }
 
+    print(metadata)
+
     yt.streams.get_highest_resolution().download(
-        output_path=output_path, filename=f"{vid_id}.mp4"
+        output_path=temp_dir, filename=f"{vid_id}.mp4"
     )
     return metadata
 
 
-def extract_frame(video_path, frame_count, output_folder):
+def extract_frame(video_path, frame_count, frame_rate, output_folder):
+    print(frame_rate)
     # Open the video file
     video = cv2.VideoCapture(video_path)
 
@@ -46,15 +53,20 @@ def extract_frame(video_path, frame_count, output_folder):
     # Read the frame
     ret, frame = video.read()
 
+    start_second = int(frame_count / frame_rate)
+    print(start_second)
+
     # Save the frame as an image
-    image_path = os.path.join(output_folder, f"frame{frame_count:04d}.png")
+    image_path = os.path.join(output_folder, f"frame{start_second:04d}.png")
+
+    print(image_path)
     cv2.imwrite(image_path, frame)
 
     # Release the video file
     video.release()
 
 
-def video_to_images(video_path, output_folder, fps=0.5):
+def video_to_images(video_path, vid_id, fps=0.5):
     """
     Convert a video to a sequence of images and save them to the output folder.
 
@@ -70,24 +82,29 @@ def video_to_images(video_path, output_folder, fps=0.5):
     # Get the total number of frames
     total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
 
+    frame_rate = video.get(cv2.CAP_PROP_FPS)
+
+    print(frame_rate)
+
     # Calculate the frame indices to extract based on the desired fps
     frame_indices = [
         int(frame_number)
-        for frame_number in range(
-            0, total_frames, int(video.get(cv2.CAP_PROP_FPS) / fps)
-        )
+        for frame_number in range(0, total_frames, int(frame_rate / fps))
     ]
 
+    output_path = f"data/images/{vid_id}"
+
     # Create the output folder if it doesn't exist
-    os.makedirs(output_folder, exist_ok=True)
+    os.makedirs(output_path, exist_ok=True)
 
     # Initialize thread pool executor
     executor = ThreadPoolExecutor()
 
     # Extract frames in parallel
     for frame_count in frame_indices:
-        print(frame_count)
-        executor.submit(extract_frame, video_path, frame_count, output_folder)
+        executor.submit(
+            extract_frame, video_path, frame_count, frame_rate, output_path
+        )
 
     # Shutdown the executor
     executor.shutdown()
@@ -95,25 +112,32 @@ def video_to_images(video_path, output_folder, fps=0.5):
     # Release the video file
     video.release()
 
-    return output_folder
+    return output_path
 
 
-def video_to_audio(video_path, output_audio_path):
+def video_to_audio(video_path, vid_id):
     """
     Convert a video to audio and save it to the output path.
 
     Parameters:
     video_path (str): The path to the video file.
-    output_audio_path (str): The path to save the audio to.
 
     """
     clip = VideoFileClip(video_path)
     audio = clip.audio
 
+    output_audio_path = f"data/audio/{vid_id}.wav"
+
+    os.makedirs("data/audio/", exist_ok=True)
+
     audio.write_audiofile(output_audio_path, codec="pcm_s16le")
 
+    return output_audio_path
 
-def process_chunk(chunk_id, start_time, end_time, audio_chunk, recognizer):
+
+def process_chunk(
+    chunk_id, start_time, end_time, audio_chunk, recognizer, vid_id
+):
     """
     Process an individual audio chunk and save the transcription along with its start and end times to a JSON file.
 
@@ -128,11 +152,11 @@ def process_chunk(chunk_id, start_time, end_time, audio_chunk, recognizer):
         # Recognize the speech in the chunk
         text = recognizer.recognize_whisper_api(audio_chunk)
         # Save the transcription to a JSON file
-        with open(f"transcribes/chunk_{chunk_id}.json", "w") as file:
+        with open(f"data/transcribes/{vid_id}/{chunk_id}.json", "w") as file:
             json.dump(
                 {"start": start_time, "end": end_time, "text": text}, file
             )
-        print(f"Chunk {chunk_id} processed successfully.")
+        # print(f"Chunk {chunk_id} processed successfully.")
     except sr.UnknownValueError:
         print(
             f"Chunk {chunk_id}: Speech recognition could not understand the audio."
@@ -141,7 +165,7 @@ def process_chunk(chunk_id, start_time, end_time, audio_chunk, recognizer):
         print(f"Chunk {chunk_id}: Could not request results from service; {e}")
 
 
-def audio_to_text(audio_path):
+def audio_to_text(audio_path, vid_id):
     """
     Convert audio to text using the SpeechRecognition library by processing the audio in chunks.
     Each chunk is processed in a separate thread, and the results, including start and end times, are saved to individual JSON files.
@@ -152,7 +176,7 @@ def audio_to_text(audio_path):
     """
     recognizer = sr.Recognizer()
     audio = sr.AudioFile(audio_path)
-    os.makedirs("transcribes", exist_ok=True)
+    os.makedirs(f"data/transcribes/{vid_id}", exist_ok=True)
     chunk_duration = 30  # Duration of each chunk in seconds
 
     with audio as source, concurrent.futures.ThreadPoolExecutor() as executor:
@@ -178,6 +202,7 @@ def audio_to_text(audio_path):
                         end_time,
                         audio_chunk,
                         recognizer,
+                        vid_id,
                     )
                 )
                 start_time += chunk_duration
@@ -194,14 +219,47 @@ def audio_to_text(audio_path):
     transcriptions = []
     for i in range(chunk_id):
         try:
-            with open(f"transcribes/chunk_{i}.json", "r") as file:
+            with open(f"data/transcribes/{vid_id}/{i}.json", "r") as file:
                 transcriptions.append(json.load(file))
             # Remove the chunk file after adding its content to the transcriptions list
-            os.remove(f"transcribes/chunk_{i}.json")
+            os.remove(f"data/transcribes/{vid_id}/{i}.json")
         except FileNotFoundError:
-            print(f"Warning: File transcribes/chunk_{i}.json not found.")
+            print(f"Warning: File transcribes/{vid_id}/{i}.json not found.")
 
-    with open("transcribes/final_transcription.json", "w") as outfile:
+    with open(
+        f"data/transcribes/{vid_id}/final_transcription.json", "w"
+    ) as outfile:
         json.dump(transcriptions, outfile)
 
     return transcriptions
+
+
+if __name__ == "__main__":
+    import time
+
+    start = time.time()
+
+    output_meta = download_video(
+        "https://www.youtube.com/watch?v=EDj-Xo8AlSU", "abce1"
+    )
+
+    print(f"Downloading time = {time.time() - start}")
+
+    download_cp = time.time()
+
+    video_path = output_meta["output_path"]
+    images_folder = video_to_images(
+        video_path,
+        "abce1",
+    )
+
+    print(f"Extracting images time: {time.time() - download_cp}")
+
+    image_cp = time.time()
+
+    audio_path = video_to_audio(video_path, "abce1")
+    transcribe = audio_to_text(audio_path, "abce1")
+
+    print(f"Transcribe time = {time.time() - image_cp}")
+
+    print(f"Total time: {time.time()-start}")
