@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "ytb-clone"
+version = "0.1.0"
+description = ""
+authors = ["tsdocode <tsdocode@gmail.com>"]
+readme = "README.md"
+packages = [{include = "ytb_clone"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+moviepy = "^1.0.3"
+pytube = "^15.0.0"
+opencv-python = "^4.9.0.80"
+speechrecognition = {extras = ["whisper-api"], version = "^3.10.3"}
+clip = {git = "https://github.com/openai/CLIP.git"}
+qdrant-client = "^1.8.2"
+langchain = "^0.1.14"
+tiktoken = "^0.6.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
