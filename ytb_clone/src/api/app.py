@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 import uvicorn
 import json
-import os
 from dotenv import load_dotenv
 from uuid import uuid4
 from qdrant_client import models
@@ -28,9 +27,6 @@ from ytb_clone.src.embedding.text.openai import get_embedding as text_embedding
 from ytb_clone.src.embedding.text.clip import (
     get_embedding as clip_text_embedding,
 )
-
-from ytb_clone.src.utils import replace_from_pattern_with_youtube_link
-
 
 path_env = ".env"
 load_dotenv(path_env)
@@ -192,9 +188,9 @@ async def query_video(params: VidQueryParams):
 
     no_trans_frame = [i["data"] for i in related_images if i["data"] not in added_frame]
 
-    # print(merged_data)
+    ytb_url = f"https://www.youtube.com/watch?v={video_id}" + "&t={}s"
 
-    response = get_response(merged_data, no_trans_frame, question)
+    response = get_response(merged_data, no_trans_frame, question, ytb_url)
 
     return StreamingResponse(response, media_type="text/event-stream")
 
@@ -209,5 +205,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-if __name__ == "__main__":
+
+def main():
     uvicorn.run(app, host="localhost", port=8001)
+    
+
+if __name__ == "__main__":
+    main()

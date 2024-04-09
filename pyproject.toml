@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "ytb_clone"}]
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.10"
 moviepy = "^1.0.3"
 pytube = "^15.0.0"
 opencv-python = "^4.9.0.80"
@@ -16,11 +16,14 @@ clip = {git = "https://github.com/openai/CLIP.git"}
 qdrant-client = "^1.8.2"
 langchain = "^0.1.14"
 tiktoken = "^0.6.0"
-fastapi = "^0.110.1"
-uvicorn = "^0.29.0"
 httpx-sse = "^0.4.0"
+chainlit = "^1.0.500"
+streamlit = "^1.33.0"
 
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+start-api = "ytb_clone.src.api.app:main"

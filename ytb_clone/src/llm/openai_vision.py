@@ -12,13 +12,13 @@ You are an Youtube Video Analysis, your ask is answer question based on provided
 Here is useful transcribe and frames:
 
 Remember to response with time range references with this format:
-[FROM->TO], FROM and TO must be second
+[FROM->TO](https://www.youtube.com/watch?v={video_id}&t={FROM}), FROM and TO must be second
 
 Response in markdown also. Response as friendly as you are an people instead of a bot. Do not include any image
 """
 
 
-def get_response(related_texts, alone_images, question):
+def get_response(related_texts, alone_images, question, video_url):
     text_chat = []
 
     for text in related_texts:
@@ -27,6 +27,7 @@ def get_response(related_texts, alone_images, question):
             {
                 "type": "text",
                 "text": f"""
+                    Video_URL: {video_url}
                     Transcribe from second {item["start"]} to second {item["end"]}, content: {text}
                 """,
             }
@@ -94,21 +95,21 @@ def get_response(related_texts, alone_images, question):
         stream=True,
     )
 
-    return stream_response(response)
+    return stream_response(response, video_url)
 
 
-def stream_response(response):
+def stream_response(response, video_url):
     text = ""
     for chunk in response:
-        yield "data:" + json.dumps({
-            "text": chunk.choices[0].delta.content,
-            "end": False
-        }) + "\n\n"
-        
+        if chunk.choices[0].delta.content:
+            yield "data:" + json.dumps(
+                {"text": chunk.choices[0].delta.content, "end": False}
+            ) + "\n\n"
+
         if chunk.choices[0].delta.content:
             text += chunk.choices[0].delta.content
 
-    yield "data:" + json.dumps({
-        "text": replace_from_pattern_with_youtube_link(text),
-        "end": True
-    }) + "\n\n"
+    print(text)
+    # yield "data:" + json.dumps(
+    #     {"text": replace_from_pattern_with_youtube_link(text, video_url), "end": True}
+    # ) + "\n\n"
